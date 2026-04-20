@@ -547,6 +547,110 @@
     color: #999;
     font-style: italic;
   }
+  .welcome-card {
+    text-align: center;
+    padding: 48px 40px;
+  }
+  .welcome-title {
+    font-family: "Playfair Display", serif;
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 12px;
+    letter-spacing: -0.3px;
+  }
+  .welcome-sub {
+    color: #4a4a4a;
+    margin-bottom: 32px;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .welcome-field {
+    text-align: left;
+    margin-bottom: 22px;
+  }
+  .welcome-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: #555;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .welcome-input {
+    width: 100%;
+    padding: 16px 20px;
+    font-size: 17px;
+    font-family: inherit;
+    font-weight: 500;
+    border: 2px solid rgba(217, 70, 111, 0.25);
+    border-radius: 14px;
+    background: #fff;
+    outline: none;
+    color: var(--ink);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .welcome-input:focus {
+    border-color: #d9466f;
+    box-shadow: 0 0 0 4px rgba(217, 70, 111, 0.12);
+  }
+  .welcome-input.error {
+    border-color: #d85464;
+    animation: shake 0.35s ease;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-7px); }
+    75% { transform: translateX(7px); }
+  }
+  .welcome-btn {
+    width: 100%;
+    padding: 18px;
+    font-size: 17px;
+    margin-top: 8px;
+  }
+  .send-status {
+    margin: 24px 0 4px;
+    padding: 14px 20px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .send-status.sending {
+    background: rgba(217, 70, 111, 0.08);
+    color: #a8154f;
+    border: 1px solid rgba(217, 70, 111, 0.18);
+  }
+  .send-status.success {
+    background: rgba(111, 203, 119, 0.15);
+    color: #2d6b35;
+    border: 1px solid rgba(111, 203, 119, 0.4);
+  }
+  .send-status.error {
+    background: rgba(216, 84, 100, 0.12);
+    color: #9e1d33;
+    border: 1px solid rgba(216, 84, 100, 0.35);
+  }
+  .send-status.skipped {
+    background: rgba(100, 100, 100, 0.08);
+    color: #666;
+    border: 1px solid rgba(100, 100, 100, 0.2);
+  }
+  .send-retry {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 4px 12px;
+    background: #fff;
+    border: 1px solid #d85464;
+    color: #9e1d33;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
   @media (max-width: 640px) {
     body { padding: 20px 12px 40px; }
     .nav-grid { grid-template-columns: repeat(6, 1fr); }
@@ -664,6 +768,9 @@
 </div>
 
 <script>
+// ⬇ Вставь сюда URL, который Google Apps Script выдаст после деплоя (шаг 12 в инструкции)
+const EMAIL_WEBHOOK_URL = "";
+
 const QUIZ = [
   {
     section: "Раздел 1. Термины",
@@ -825,6 +932,9 @@ const QUIZ = [
 
 const LETTERS = ["А", "Б", "В", "Г", "Д"];
 let currentIdx = 0;
+let candidateName = "";
+let started = false;
+let lastPayload = null;
 const state = QUIZ.map(() => ({ picked: null, finalized: false, text: "", submitted: false }));
 
 const quizArea = document.getElementById("quizArea");
@@ -840,6 +950,10 @@ function isAnswered(i) {
 
 function buildNav() {
   navGrid.innerHTML = "";
+  if (!started) {
+    progressBar.style.width = "0%";
+    return;
+  }
   QUIZ.forEach((_, i) => {
     const btn = document.createElement("button");
     btn.className = "nav-btn";
@@ -853,7 +967,71 @@ function buildNav() {
   progressBar.style.width = (answered / QUIZ.length * 100) + "%";
 }
 
+function renderWelcome() {
+  buildNav();
+  quizArea.innerHTML = "";
+  resultArea.classList.add("hidden");
+  quizArea.classList.remove("hidden");
+
+  const card = document.createElement("div");
+  card.className = "card welcome-card";
+
+  const title = document.createElement("div");
+  title.className = "welcome-title";
+  title.textContent = "Перед началом теста представьтесь";
+  card.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "welcome-sub";
+  sub.textContent = "Результаты будут автоматически отправлены работодателю по e-mail";
+  card.appendChild(sub);
+
+  const field = document.createElement("div");
+  field.className = "welcome-field";
+  const label = document.createElement("label");
+  label.className = "welcome-label";
+  label.textContent = "Имя и фамилия";
+  field.appendChild(label);
+
+  const input = document.createElement("input");
+  input.className = "welcome-input";
+  input.type = "text";
+  input.placeholder = "Например, Анна Иванова";
+  input.value = candidateName;
+  input.autocomplete = "name";
+  input.oninput = () => {
+    candidateName = input.value;
+    input.classList.remove("error");
+  };
+  field.appendChild(input);
+  card.appendChild(field);
+
+  const btn = document.createElement("button");
+  btn.className = "btn btn-primary welcome-btn";
+  btn.textContent = "Начать тест →";
+  btn.onclick = () => {
+    candidateName = input.value.trim();
+    if (!candidateName) {
+      input.classList.add("error");
+      input.focus();
+      return;
+    }
+    started = true;
+    currentIdx = 0;
+    render();
+  };
+  input.onkeydown = (e) => { if (e.key === "Enter") btn.click(); };
+  card.appendChild(btn);
+
+  quizArea.appendChild(card);
+  setTimeout(() => input.focus(), 50);
+}
+
 function render() {
+  if (!started) {
+    renderWelcome();
+    return;
+  }
   buildNav();
   const q = QUIZ[currentIdx];
   const s = state[currentIdx];
@@ -1111,6 +1289,9 @@ function showResults() {
   restartBtn.textContent = "Пройти заново";
   restartBtn.onclick = () => {
     state.forEach(s => { s.picked = null; s.finalized = false; s.text = ""; s.submitted = false; });
+    candidateName = "";
+    started = false;
+    lastPayload = null;
     resultArea.classList.add("hidden");
     quizArea.classList.remove("hidden");
     currentIdx = 0;
@@ -1118,9 +1299,101 @@ function showResults() {
   };
   controls.appendChild(restartBtn);
 
+  const sendStatus = document.createElement("div");
+  sendStatus.className = "send-status sending";
+  sendStatus.textContent = "Отправка результатов на e-mail…";
+  card.insertBefore(sendStatus, controls);
+
+  lastPayload = buildPayload(correct, total, pct, sections);
+  deliverResults(sendStatus);
+
   card.appendChild(controls);
   resultArea.appendChild(card);
   buildNav();
+}
+
+function answerText(q, idx) {
+  return q.answers && q.answers[idx] ? q.answers[idx].t : "";
+}
+
+function correctAnswersText(q) {
+  if (!q.answers) return "";
+  const ci = q.answers.map((a, i) => a.correct ? i : -1).filter(i => i >= 0);
+  return ci.map(i => LETTERS[i] + ". " + q.answers[i].t).join(" | ");
+}
+
+function pickedAnswersText(q, s) {
+  if (!s.picked || !s.picked.length) return "";
+  return s.picked.map(i => LETTERS[i] + ". " + answerText(q, i)).join(" | ");
+}
+
+function buildPayload(correct, total, pct, sections) {
+  return {
+    name: candidateName,
+    date: new Date().toISOString(),
+    score: correct + "/" + total,
+    correct: correct,
+    total: total,
+    percent: pct,
+    sections: Object.entries(sections).map(([name, d]) => ({
+      name,
+      correct: d.correct,
+      total: d.total,
+      free: !!d.free
+    })),
+    answers: QUIZ.map((q, i) => {
+      const s = state[i];
+      if (q.free) {
+        return {
+          num: i + 1,
+          section: q.section,
+          q: q.q,
+          type: "free",
+          free_text: (s.text || "").trim(),
+          submitted: !!s.submitted
+        };
+      }
+      return {
+        num: i + 1,
+        section: q.section,
+        q: q.q,
+        type: q.multi ? "multi" : "single",
+        picked_text: pickedAnswersText(q, s),
+        correct_text: correctAnswersText(q),
+        is_correct: isCorrect(i),
+        answered: !!s.finalized
+      };
+    })
+  };
+}
+
+function deliverResults(statusEl) {
+  if (!EMAIL_WEBHOOK_URL) {
+    statusEl.className = "send-status skipped";
+    statusEl.textContent = "⚙ Отправка на e-mail ещё не настроена";
+    return;
+  }
+  statusEl.className = "send-status sending";
+  statusEl.textContent = "Отправка результатов на e-mail…";
+
+  fetch(EMAIL_WEBHOOK_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(lastPayload)
+  }).then(() => {
+    statusEl.className = "send-status success";
+    statusEl.textContent = "✓ Результаты отправлены работодателю";
+  }).catch(() => {
+    statusEl.className = "send-status error";
+    statusEl.textContent = "⚠ Не удалось отправить ";
+    const retry = document.createElement("button");
+    retry.className = "send-retry";
+    retry.type = "button";
+    retry.textContent = "Повторить";
+    retry.onclick = () => deliverResults(statusEl);
+    statusEl.appendChild(retry);
+  });
 }
 
 render();
