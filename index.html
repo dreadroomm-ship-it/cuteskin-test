@@ -768,8 +768,7 @@
 </div>
 
 <script>
-// ⬇ Вставь сюда URL, который Google Apps Script выдаст после деплоя (шаг 12 в инструкции)
-const EMAIL_WEBHOOK_URL = "";
+const EMAIL_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxL0N5lOGZtgGPq_BWhCP4_SkI5VHRu6QQlBqgXrSRfAYzA69VE4B9QGq6q27Vfnl_kbg/exec";
 
 const QUIZ = [
   {
@@ -1376,24 +1375,34 @@ function deliverResults(statusEl) {
   statusEl.className = "send-status sending";
   statusEl.textContent = "Отправка результатов на e-mail…";
 
-  fetch(EMAIL_WEBHOOK_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(lastPayload)
-  }).then(() => {
-    statusEl.className = "send-status success";
-    statusEl.textContent = "✓ Результаты отправлены работодателю";
-  }).catch(() => {
+  const showError = (msg) => {
     statusEl.className = "send-status error";
-    statusEl.textContent = "⚠ Не удалось отправить ";
+    statusEl.textContent = "⚠ " + msg + " ";
     const retry = document.createElement("button");
     retry.className = "send-retry";
     retry.type = "button";
     retry.textContent = "Повторить";
     retry.onclick = () => deliverResults(statusEl);
     statusEl.appendChild(retry);
-  });
+  };
+
+  fetch(EMAIL_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(lastPayload),
+    redirect: "follow"
+  }).then((r) => r.text().then((t) => ({ ok: r.ok, text: t })))
+    .then(({ ok, text }) => {
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch (e) {}
+      if (ok && parsed && parsed.ok) {
+        statusEl.className = "send-status success";
+        statusEl.textContent = "✓ Результаты отправлены работодателю";
+      } else {
+        showError("Сервер вернул ошибку");
+      }
+    })
+    .catch(() => showError("Не удалось отправить результаты"));
 }
 
 render();
