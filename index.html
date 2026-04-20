@@ -1301,7 +1301,7 @@ function showResults() {
   const sendStatus = document.createElement("div");
   sendStatus.className = "send-status sending";
   sendStatus.textContent = "Отправка результатов на e-mail…";
-  card.insertBefore(sendStatus, controls);
+  card.appendChild(sendStatus);
 
   lastPayload = buildPayload(correct, total, pct, sections);
   deliverResults(sendStatus);
