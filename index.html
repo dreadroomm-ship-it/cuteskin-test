@@ -1094,7 +1094,6 @@ let finished = false;
 let lastPayload = null;
 let testStartAt = null;
 let testEndAt = null;
-let tabSwitches = 0;
 let screenshotAttempts = 0;
 let activeQuestionIdx = null;
 let questionEnterAt = null;
@@ -1124,7 +1123,6 @@ function registerAway() {
   if (now - lastAwayAt < 500) return;
   lastAwayAt = now;
   awayStartAt = now;
-  tabSwitches++;
   flushActiveTimer();
 }
 function registerBack() {
@@ -1331,7 +1329,6 @@ function renderWarning() {
   const items = [
     "<b>Секундомер на каждый вопрос</b> и общая длительность теста.",
     "<b>Попытки вставки и копирования</b> фиксируются по каждому вопросу.",
-    "<b>Переключения окна</b> — смена вкладки, сворачивание, Alt+Tab в другое приложение.",
     "<b>Попытки скриншота</b> — PrintScreen, Ctrl/Alt+PrtSc, Win+Shift+S, Cmd+Shift+3/4/5/6, плюс косвенные признаки (краткая потеря фокуса).",
   ];
   items.forEach((html) => {
@@ -1351,7 +1348,7 @@ function renderWarning() {
   const items2 = [
     "Под каждым вопросом — <b>время ответа</b> и флажки: «быстрый ответ», «вставка×N», «копирование×N».",
     "Подозрительные ответы <b>подсвечены красным</b>.",
-    "В шапке письма — общее число переключений и попыток скриншота.",
+    "В шапке письма — общее число попыток скриншота.",
   ];
   items2.forEach((html) => {
     const li = document.createElement("li");
@@ -1374,11 +1371,10 @@ function renderWarning() {
       <div class="wp-date">21.04.2026 · 10:40</div>
       <div class="wp-chips">
         <span class="wp-chip">⏱ 28с</span>
-        <span class="wp-chip wp-chip-warn">⚠ Переключений: 7</span>
         <span class="wp-chip wp-chip-warn">⚠ Скриншотов: 5</span>
       </div>
     </div>
-    <div class="wp-alert">⚠ Кандидат покидал вкладку 7 раз · пытался сделать скриншот 5 раз во время прохождения теста</div>
+    <div class="wp-alert">⚠ Кандидат пытался сделать скриншот 5 раз во время прохождения теста</div>
   `;
   card.appendChild(preview);
 
@@ -1708,7 +1704,6 @@ function showResults() {
     lastPayload = null;
     testStartAt = null;
     testEndAt = null;
-    tabSwitches = 0;
     screenshotAttempts = 0;
     activeQuestionIdx = null;
     questionEnterAt = null;
@@ -1760,7 +1755,6 @@ function buildPayload(correct, total, pct, sections) {
     total: total,
     percent: pct,
     duration_sec: durationSec,
-    tab_switches: tabSwitches,
     screenshot_attempts: screenshotAttempts,
     sections: Object.entries(sections).map(([name, d]) => ({
       name,
