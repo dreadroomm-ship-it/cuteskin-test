@@ -934,6 +934,7 @@ let lastPayload = null;
 let testStartAt = null;
 let testEndAt = null;
 let tabSwitches = 0;
+let screenshotAttempts = 0;
 let activeQuestionIdx = null;
 let questionEnterAt = null;
 const state = QUIZ.map(() => ({
@@ -954,23 +955,56 @@ function startQuestionTimer(i) {
   questionEnterAt = Date.now();
 }
 
-document.addEventListener("visibilitychange", () => {
+let lastAwayAt = 0;
+function registerAway() {
   if (!started || finished) return;
-  if (document.visibilityState === "hidden") {
-    tabSwitches++;
-    flushActiveTimer();
-  } else if (document.visibilityState === "visible") {
-    if (activeQuestionIdx == null && currentIdx >= 0 && currentIdx < QUIZ.length) {
-      startQuestionTimer(currentIdx);
-    }
+  const now = Date.now();
+  if (now - lastAwayAt < 500) return;
+  lastAwayAt = now;
+  tabSwitches++;
+  flushActiveTimer();
+}
+function registerBack() {
+  if (!started || finished) return;
+  if (activeQuestionIdx == null && currentIdx >= 0 && currentIdx < QUIZ.length) {
+    startQuestionTimer(currentIdx);
   }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") registerAway();
+  else if (document.visibilityState === "visible") registerBack();
 });
+window.addEventListener("blur", registerAway);
+window.addEventListener("focus", registerBack);
 
 document.addEventListener("copy", () => {
   if (!started || finished) return;
   if (activeQuestionIdx != null && state[activeQuestionIdx]) {
     state[activeQuestionIdx].copyAttempts++;
   }
+});
+
+let lastShotAt = 0;
+function registerScreenshot() {
+  if (!started || finished) return;
+  const now = Date.now();
+  if (now - lastShotAt < 500) return;
+  lastShotAt = now;
+  screenshotAttempts++;
+}
+function isScreenshotCombo(e) {
+  const k = (e.key || "").toLowerCase();
+  if (e.key === "PrintScreen" || k === "printscreen") return true;
+  if (e.metaKey && e.shiftKey && (k === "3" || k === "4" || k === "5")) return true;
+  if (e.metaKey && e.shiftKey && k === "s") return true;
+  return false;
+}
+document.addEventListener("keydown", (e) => {
+  if (isScreenshotCombo(e)) registerScreenshot();
+});
+document.addEventListener("keyup", (e) => {
+  if (e.key === "PrintScreen") registerScreenshot();
 });
 
 const quizArea = document.getElementById("quizArea");
@@ -1352,8 +1386,11 @@ function showResults() {
     testStartAt = null;
     testEndAt = null;
     tabSwitches = 0;
+    screenshotAttempts = 0;
     activeQuestionIdx = null;
     questionEnterAt = null;
+    lastAwayAt = 0;
+    lastShotAt = 0;
     resultArea.classList.add("hidden");
     quizArea.classList.remove("hidden");
     currentIdx = 0;
@@ -1400,6 +1437,7 @@ function buildPayload(correct, total, pct, sections) {
     percent: pct,
     duration_sec: durationSec,
     tab_switches: tabSwitches,
+    screenshot_attempts: screenshotAttempts,
     sections: Object.entries(sections).map(([name, d]) => ({
       name,
       correct: d.correct,
