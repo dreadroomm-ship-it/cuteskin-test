@@ -289,40 +289,26 @@
       inset 0 -2px 3px rgba(0, 0, 0, 0.15);
     font-family: "Inter", sans-serif;
   }
-  .answer.correct {
-    background: linear-gradient(145deg, #6fcb77, #3f8547);
+  .answer.picked {
+    background: linear-gradient(145deg, #050505, #000000);
     color: #ffffff;
     cursor: default;
+    transform: translateY(1px);
     box-shadow:
-      0 10px 22px rgba(63, 133, 71, 0.45),
-      inset 0 2px 0 rgba(255,255,255,0.35),
-      inset 0 -3px 6px rgba(30, 70, 35, 0.35);
+      0 4px 12px rgba(0, 0, 0, 0.5),
+      inset 0 3px 8px rgba(0, 0, 0, 0.75),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.06);
   }
-  .answer.correct .marker {
-    background: linear-gradient(145deg, #ffffff, #dfefe0);
-    color: #2f6336;
-    box-shadow:
-      0 3px 8px rgba(30, 70, 35, 0.4),
-      inset 0 1px 0 rgba(255,255,255,0.9);
-  }
-  .answer.wrong {
-    background: linear-gradient(145deg, #e04c5f, #9e1d33);
+  .answer.picked .marker {
+    background: linear-gradient(145deg, #f5a5c0, #d9466f);
     color: #ffffff;
-    cursor: default;
     box-shadow:
-      0 10px 22px rgba(158, 29, 51, 0.45),
-      inset 0 2px 0 rgba(255,255,255,0.3),
-      inset 0 -3px 6px rgba(70, 15, 25, 0.35);
-  }
-  .answer.wrong .marker {
-    background: linear-gradient(145deg, #ffffff, #f5dde0);
-    color: #8a1a2c;
-    box-shadow:
-      0 3px 8px rgba(70, 15, 25, 0.4),
-      inset 0 1px 0 rgba(255,255,255,0.9);
+      0 2px 6px rgba(217, 70, 111, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35);
   }
   .answer.revealed { cursor: default; }
   .answer:disabled { cursor: default; }
+  .answer:disabled:not(.picked) { opacity: 0.55; }
   .controls {
     display: flex;
     justify-content: space-between;
@@ -1182,9 +1168,8 @@ function render() {
 
       if (q.multi) {
         if (pickedThis) {
-          btn.classList.add("revealed");
+          btn.classList.add("revealed", "picked");
           btn.disabled = true;
-          btn.classList.add(a.correct ? "correct" : "wrong");
         } else {
           btn.onclick = () => pick(i);
         }
@@ -1192,7 +1177,7 @@ function render() {
         if (s.finalized) {
           btn.classList.add("revealed");
           btn.disabled = true;
-          if (pickedThis) btn.classList.add(a.correct ? "correct" : "wrong");
+          if (pickedThis) btn.classList.add("picked");
         } else {
           btn.onclick = () => pick(i);
         }
