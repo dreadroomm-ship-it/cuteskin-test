@@ -956,16 +956,27 @@ function startQuestionTimer(i) {
 }
 
 let lastAwayAt = 0;
+let awayStartAt = 0;
 function registerAway() {
   if (!started || finished) return;
   const now = Date.now();
   if (now - lastAwayAt < 500) return;
   lastAwayAt = now;
+  awayStartAt = now;
   tabSwitches++;
   flushActiveTimer();
 }
 function registerBack() {
   if (!started || finished) return;
+  if (awayStartAt > 0) {
+    const awayDuration = Date.now() - awayStartAt;
+    const recentShot = (Date.now() - lastShotAt) < 3000;
+    if (awayDuration > 50 && awayDuration < 2500 && !recentShot) {
+      screenshotAttempts++;
+      lastShotAt = Date.now();
+    }
+    awayStartAt = 0;
+  }
   if (activeQuestionIdx == null && currentIdx >= 0 && currentIdx < QUIZ.length) {
     startQuestionTimer(currentIdx);
   }
@@ -994,18 +1005,25 @@ function registerScreenshot() {
   screenshotAttempts++;
 }
 function isScreenshotCombo(e) {
-  const k = (e.key || "").toLowerCase();
-  if (e.key === "PrintScreen" || k === "printscreen") return true;
-  if (e.metaKey && e.shiftKey && (k === "3" || k === "4" || k === "5")) return true;
-  if (e.metaKey && e.shiftKey && k === "s") return true;
+  const key = e.key || "";
+  const code = e.code || "";
+  const kLow = key.toLowerCase();
+  if (key === "PrintScreen" || kLow === "printscreen") return true;
+  if (code === "PrintScreen") return true;
+  if (e.keyCode === 44) return true;
+  if (e.metaKey && e.shiftKey && (kLow === "3" || kLow === "4" || kLow === "5" || kLow === "6")) return true;
+  if (e.metaKey && e.shiftKey && kLow === "s") return true;
+  if (e.ctrlKey && (key === "PrintScreen" || code === "PrintScreen")) return true;
+  if (e.altKey && (key === "PrintScreen" || code === "PrintScreen")) return true;
   return false;
 }
-document.addEventListener("keydown", (e) => {
+function onShotKey(e) {
   if (isScreenshotCombo(e)) registerScreenshot();
-});
-document.addEventListener("keyup", (e) => {
-  if (e.key === "PrintScreen") registerScreenshot();
-});
+}
+document.addEventListener("keydown", onShotKey, true);
+document.addEventListener("keyup", onShotKey, true);
+window.addEventListener("keydown", onShotKey, true);
+window.addEventListener("keyup", onShotKey, true);
 
 const quizArea = document.getElementById("quizArea");
 const resultArea = document.getElementById("resultArea");
@@ -1390,6 +1408,7 @@ function showResults() {
     activeQuestionIdx = null;
     questionEnterAt = null;
     lastAwayAt = 0;
+    awayStartAt = 0;
     lastShotAt = 0;
     resultArea.classList.add("hidden");
     quizArea.classList.remove("hidden");
