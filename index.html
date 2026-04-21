@@ -943,8 +943,49 @@ const LETTERS = ["А", "Б", "В", "Г", "Д"];
 let currentIdx = 0;
 let candidateName = "";
 let started = false;
+let finished = false;
 let lastPayload = null;
-const state = QUIZ.map(() => ({ picked: null, finalized: false, text: "", submitted: false }));
+let testStartAt = null;
+let testEndAt = null;
+let tabSwitches = 0;
+let activeQuestionIdx = null;
+let questionEnterAt = null;
+const state = QUIZ.map(() => ({
+  picked: null, finalized: false, text: "", submitted: false,
+  timeSpent: 0, pasteAttempts: 0, copyAttempts: 0
+}));
+
+function flushActiveTimer() {
+  if (activeQuestionIdx != null && questionEnterAt != null && state[activeQuestionIdx]) {
+    state[activeQuestionIdx].timeSpent += Date.now() - questionEnterAt;
+  }
+  activeQuestionIdx = null;
+  questionEnterAt = null;
+}
+function startQuestionTimer(i) {
+  flushActiveTimer();
+  activeQuestionIdx = i;
+  questionEnterAt = Date.now();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!started || finished) return;
+  if (document.visibilityState === "hidden") {
+    tabSwitches++;
+    flushActiveTimer();
+  } else if (document.visibilityState === "visible") {
+    if (activeQuestionIdx == null && currentIdx >= 0 && currentIdx < QUIZ.length) {
+      startQuestionTimer(currentIdx);
+    }
+  }
+});
+
+document.addEventListener("copy", () => {
+  if (!started || finished) return;
+  if (activeQuestionIdx != null && state[activeQuestionIdx]) {
+    state[activeQuestionIdx].copyAttempts++;
+  }
+});
 
 const quizArea = document.getElementById("quizArea");
 const resultArea = document.getElementById("resultArea");
@@ -977,6 +1018,7 @@ function buildNav() {
 }
 
 function renderWelcome() {
+  flushActiveTimer();
   buildNav();
   quizArea.innerHTML = "";
   resultArea.classList.add("hidden");
@@ -1041,6 +1083,8 @@ function render() {
     renderWelcome();
     return;
   }
+  if (testStartAt == null) testStartAt = Date.now();
+  if (!finished) startQuestionTimer(currentIdx);
   buildNav();
   const q = QUIZ[currentIdx];
   const s = state[currentIdx];
@@ -1074,8 +1118,8 @@ function render() {
     input.className = "free-input";
     input.placeholder = "Ваш ответ...";
     input.value = s.text || "";
-    input.onpaste = e => e.preventDefault();
-    input.ondrop = e => e.preventDefault();
+    input.onpaste = e => { s.pasteAttempts++; e.preventDefault(); };
+    input.ondrop = e => { s.pasteAttempts++; e.preventDefault(); };
     if (s.submitted) {
       input.disabled = true;
       input.readOnly = true;
@@ -1217,6 +1261,9 @@ function isCorrect(qi) {
 }
 
 function showResults() {
+  flushActiveTimer();
+  finished = true;
+  testEndAt = Date.now();
   const gradedIdx = QUIZ.map((q, i) => q.free ? -1 : i).filter(i => i >= 0);
   const total = gradedIdx.length;
   const correct = gradedIdx.reduce((sum, i) => sum + (isCorrect(i) ? 1 : 0), 0);
@@ -1309,10 +1356,19 @@ function showResults() {
   restartBtn.className = "btn btn-primary";
   restartBtn.textContent = "Пройти заново";
   restartBtn.onclick = () => {
-    state.forEach(s => { s.picked = null; s.finalized = false; s.text = ""; s.submitted = false; });
+    state.forEach(s => {
+      s.picked = null; s.finalized = false; s.text = ""; s.submitted = false;
+      s.timeSpent = 0; s.pasteAttempts = 0; s.copyAttempts = 0;
+    });
     candidateName = "";
     started = false;
+    finished = false;
     lastPayload = null;
+    testStartAt = null;
+    testEndAt = null;
+    tabSwitches = 0;
+    activeQuestionIdx = null;
+    questionEnterAt = null;
     resultArea.classList.add("hidden");
     quizArea.classList.remove("hidden");
     currentIdx = 0;
@@ -1349,6 +1405,7 @@ function pickedAnswersText(q, s) {
 }
 
 function buildPayload(correct, total, pct, sections) {
+  const durationSec = testStartAt && testEndAt ? Math.round((testEndAt - testStartAt) / 1000) : 0;
   return {
     name: candidateName,
     date: new Date().toISOString(),
@@ -1356,6 +1413,8 @@ function buildPayload(correct, total, pct, sections) {
     correct: correct,
     total: total,
     percent: pct,
+    duration_sec: durationSec,
+    tab_switches: tabSwitches,
     sections: Object.entries(sections).map(([name, d]) => ({
       name,
       correct: d.correct,
@@ -1364,26 +1423,28 @@ function buildPayload(correct, total, pct, sections) {
     })),
     answers: QUIZ.map((q, i) => {
       const s = state[i];
-      if (q.free) {
-        return {
-          num: i + 1,
-          section: q.section,
-          q: q.q,
-          type: "free",
-          free_text: (s.text || "").trim(),
-          submitted: !!s.submitted
-        };
-      }
-      return {
+      const base = {
         num: i + 1,
         section: q.section,
         q: q.q,
+        time_sec: Math.round((s.timeSpent || 0) / 1000),
+        paste_attempts: s.pasteAttempts || 0,
+        copy_attempts: s.copyAttempts || 0
+      };
+      if (q.free) {
+        return Object.assign(base, {
+          type: "free",
+          free_text: (s.text || "").trim(),
+          submitted: !!s.submitted
+        });
+      }
+      return Object.assign(base, {
         type: q.multi ? "multi" : "single",
         picked_text: pickedAnswersText(q, s),
         correct_text: correctAnswersText(q),
         is_correct: isCorrect(i),
         answered: !!s.finalized
-      };
+      });
     })
   };
 }
