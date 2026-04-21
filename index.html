@@ -1500,7 +1500,8 @@ function deliverResults(statusEl) {
   statusEl.className = "send-status sending";
   statusEl.textContent = "Отправка результатов на e-mail…";
 
-  const showError = (msg) => {
+  const showError = (msg, detail) => {
+    if (detail) console.error("[deliverResults]", detail);
     statusEl.className = "send-status error";
     statusEl.textContent = "⚠ " + msg + " ";
     const retry = document.createElement("button");
@@ -1511,23 +1512,47 @@ function deliverResults(statusEl) {
     statusEl.appendChild(retry);
   };
 
-  fetch(EMAIL_WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(lastPayload),
-    redirect: "follow"
-  }).then((r) => r.text().then((t) => ({ ok: r.ok, text: t })))
-    .then(({ ok, text }) => {
+  const sendOnce = (attempt) => {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 25000) : null;
+    return fetch(EMAIL_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(lastPayload),
+      redirect: "follow",
+      mode: "cors",
+      signal: ctrl ? ctrl.signal : undefined
+    }).then((r) => {
+      if (timer) clearTimeout(timer);
+      return r.text().then((t) => ({ ok: r.ok, status: r.status, text: t }));
+    }).catch((err) => {
+      if (timer) clearTimeout(timer);
+      if (attempt < 1) {
+        return new Promise((res) => setTimeout(res, 1200)).then(() => sendOnce(attempt + 1));
+      }
+      throw err;
+    });
+  };
+
+  sendOnce(0)
+    .then(({ ok, status, text }) => {
       let parsed = null;
       try { parsed = JSON.parse(text); } catch (e) {}
       if (ok && parsed && parsed.ok) {
         statusEl.className = "send-status success";
         statusEl.textContent = "✓ Результаты отправлены работодателю";
       } else {
-        showError("Сервер вернул ошибку");
+        showError("Сервер вернул ошибку (" + status + ")", { status, text: (text || "").slice(0, 200) });
       }
     })
-    .catch(() => showError("Не удалось отправить результаты"));
+    .catch((err) => {
+      const name = (err && err.name) || "";
+      const msg = (err && err.message) || "";
+      let label = "Не удалось отправить результаты";
+      if (name === "AbortError") label = "Сервер долго не отвечал";
+      else if (/fetch|network/i.test(msg)) label = "Нет связи с сервером";
+      showError(label, { name, message: msg });
+    });
 }
 
 render();
