@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CuteSkin · Тест на вакансию Project Manager</title>
+<title>CuteSkin · Тест на Project Manager</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
@@ -757,7 +757,7 @@
 <div class="container">
   <header>
     <img src="logo.png" alt="CuteSkin" class="logo">
-    <h1>Тест на вакансию Project Manager</h1>
+    <h1>Тест на Project Manager</h1>
     <div class="subtitle">5 разделов · 18 вопросов. После ответа выбор нельзя изменить.</div>
     <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
     <div class="nav-grid" id="navGrid"></div>
@@ -773,11 +773,11 @@ const EMAIL_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxL0N5lOGZtgG
 const QUIZ = [
   {
     section: "Раздел 1. Термины",
-    q: "Вопрос 1. Что такое маржинальная прибыль?",
+    q: "Вопрос 1. Что такое маржинальная прибыль на единицу товара?",
     answers: [
       { t: "Разница между выручкой от продажи товара и всеми переменными расходами, которые напрямую связаны с его закупкой, логистикой и продвижением.", correct: true },
       { t: "Сумма, которая остается у продавца после вычета всех без исключения расходов: переменных (закупка, комиссия, логистика, реклама) и постоянных (аренда склада/офиса, зарплата сотрудников, налоги, проценты по кредитам).", correct: false },
-      { t: "Общая сумма денег, полученная от покупателей за проданные товары.", correct: false },
+      { t: "Общая сумма, полученная от покупателя за проданный товар.", correct: false },
       { t: "Показатель эффективности, который показывает, сколько процентов прибыли содержится в каждом рубле выручки.", correct: false }
     ]
   },
@@ -819,7 +819,7 @@ const QUIZ = [
     multi: true,
     answers: [
       { t: "Цена товара увеличилась, но он остался в акции", correct: true },
-      { t: "Рейтинг изменился в 4,9 на 4,7 (если ВБ)", correct: true },
+      { t: "Рейтинг изменился в 4,9 на 4,7", correct: true },
       { t: "У товара изменилась контентная воронка", correct: false },
       { t: "Товар вылетел с крупного московского склада", correct: true },
       { t: "Товар добавили в склейку с другими товарами кабинета", correct: false }
