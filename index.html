@@ -606,6 +606,93 @@
     font-size: 17px;
     margin-top: 8px;
   }
+  .warning-card {
+    padding: 44px 40px 36px;
+    text-align: left;
+  }
+  .warning-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 22px;
+    background: linear-gradient(135deg, #7a1029, #d9466f);
+    color: #fff;
+    border-radius: 14px;
+    margin-bottom: 22px;
+    font-family: "Playfair Display", serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+  .warning-head-icon {
+    font-size: 26px;
+    line-height: 1;
+  }
+  .warning-lead {
+    color: #1a1a1a;
+    font-size: 17px;
+    line-height: 1.55;
+    font-weight: 500;
+    margin-bottom: 22px;
+  }
+  .warning-sub {
+    color: #4a4a4a;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 4px 0 10px;
+  }
+  .warning-list {
+    margin: 0 0 24px;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .warning-list li {
+    position: relative;
+    padding: 12px 14px 12px 42px;
+    border-radius: 12px;
+    background: rgba(217, 70, 111, 0.06);
+    border: 1px solid rgba(217, 70, 111, 0.14);
+    font-size: 14.5px;
+    line-height: 1.45;
+    color: #1a1a1a;
+  }
+  .warning-list li::before {
+    content: "•";
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #d9466f;
+    font-size: 22px;
+    line-height: 1;
+    font-weight: 700;
+  }
+  .warning-list b { color: #7a1029; }
+  .warning-note {
+    text-align: center;
+    color: #555;
+    font-size: 13.5px;
+    font-weight: 500;
+    margin-bottom: 14px;
+  }
+  .warning-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .warning-actions .btn { flex: 1 1 180px; }
+  .warning-back {
+    background: #fff;
+    color: #1a1a1a;
+    border: 2px solid rgba(0, 0, 0, 0.12);
+    font-weight: 600;
+  }
+  .warning-back:hover { border-color: rgba(0, 0, 0, 0.3); }
   .send-status {
     margin: 24px 0 4px;
     padding: 14px 20px;
@@ -929,6 +1016,7 @@ const LETTERS = ["А", "Б", "В", "Г", "Д"];
 let currentIdx = 0;
 let candidateName = "";
 let started = false;
+let acknowledged = false;
 let finished = false;
 let lastPayload = null;
 let testStartAt = null;
@@ -1097,7 +1185,7 @@ function renderWelcome() {
 
   const btn = document.createElement("button");
   btn.className = "btn btn-primary welcome-btn";
-  btn.textContent = "Начать тест →";
+  btn.textContent = "Продолжить →";
   btn.onclick = () => {
     candidateName = input.value.trim();
     if (!candidateName) {
@@ -1105,15 +1193,110 @@ function renderWelcome() {
       input.focus();
       return;
     }
-    started = true;
-    currentIdx = 0;
-    render();
+    renderWarning();
   };
   input.onkeydown = (e) => { if (e.key === "Enter") btn.click(); };
   card.appendChild(btn);
 
   quizArea.appendChild(card);
   setTimeout(() => input.focus(), 50);
+}
+
+function renderWarning() {
+  flushActiveTimer();
+  buildNav();
+  quizArea.innerHTML = "";
+  resultArea.classList.add("hidden");
+  quizArea.classList.remove("hidden");
+
+  const card = document.createElement("div");
+  card.className = "card warning-card";
+
+  const head = document.createElement("div");
+  head.className = "warning-head";
+  const icon = document.createElement("span");
+  icon.className = "warning-head-icon";
+  icon.textContent = "⚠";
+  const headText = document.createElement("span");
+  headText.textContent = "Внимание — прочтите перед началом";
+  head.appendChild(icon);
+  head.appendChild(headText);
+  card.appendChild(head);
+
+  const lead = document.createElement("div");
+  lead.className = "warning-lead";
+  lead.textContent = "В тесте стоит защита от любых способов задействовать поиск и нейросети для прохождения. Не нужно пытаться обмануть систему — тест нужно проходить самостоятельно.";
+  card.appendChild(lead);
+
+  const sub = document.createElement("div");
+  sub.className = "warning-sub";
+  sub.textContent = "Что отслеживается";
+  card.appendChild(sub);
+
+  const list = document.createElement("ul");
+  list.className = "warning-list";
+  const items = [
+    "<b>Секундомер на каждый вопрос</b> и общая длительность теста.",
+    "<b>Попытки вставки и копирования</b> фиксируются по каждому вопросу.",
+    "<b>Переключения окна</b> — смена вкладки, сворачивание, Alt+Tab в другое приложение.",
+    "<b>Попытки скриншота</b> — PrintScreen, Ctrl/Alt+PrtSc, Win+Shift+S, Cmd+Shift+3/4/5/6, плюс косвенные признаки (краткая потеря фокуса).",
+  ];
+  items.forEach((html) => {
+    const li = document.createElement("li");
+    li.innerHTML = html;
+    list.appendChild(li);
+  });
+  card.appendChild(list);
+
+  const sub2 = document.createElement("div");
+  sub2.className = "warning-sub";
+  sub2.textContent = "Что увидит работодатель";
+  card.appendChild(sub2);
+
+  const list2 = document.createElement("ul");
+  list2.className = "warning-list";
+  const items2 = [
+    "Под каждым вопросом — <b>время ответа</b> и флажки: «быстрый ответ», «вставка×N», «копирование×N».",
+    "Подозрительные ответы <b>подсвечены красным</b>.",
+    "В шапке письма — общее число переключений и попыток скриншота.",
+  ];
+  items2.forEach((html) => {
+    const li = document.createElement("li");
+    li.innerHTML = html;
+    list2.appendChild(li);
+  });
+  card.appendChild(list2);
+
+  const note = document.createElement("div");
+  note.className = "warning-note";
+  note.textContent = "Нажимая «Я готов(а), приступаю», вы подтверждаете, что проходите тест самостоятельно.";
+  card.appendChild(note);
+
+  const actions = document.createElement("div");
+  actions.className = "warning-actions";
+
+  const back = document.createElement("button");
+  back.className = "btn warning-back";
+  back.type = "button";
+  back.textContent = "← Назад";
+  back.onclick = () => renderWelcome();
+  actions.appendChild(back);
+
+  const go = document.createElement("button");
+  go.className = "btn btn-primary";
+  go.type = "button";
+  go.textContent = "Я готов(а), приступаю →";
+  go.onclick = () => {
+    acknowledged = true;
+    started = true;
+    currentIdx = 0;
+    render();
+  };
+  actions.appendChild(go);
+
+  card.appendChild(actions);
+  quizArea.appendChild(card);
+  setTimeout(() => go.focus(), 50);
 }
 
 function render() {
@@ -1399,6 +1582,7 @@ function showResults() {
     });
     candidateName = "";
     started = false;
+    acknowledged = false;
     finished = false;
     lastPayload = null;
     testStartAt = null;
