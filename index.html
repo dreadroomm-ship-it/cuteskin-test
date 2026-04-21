@@ -1197,6 +1197,21 @@ function isAnswered(i) {
   return q.free ? s.submitted : s.finalized;
 }
 
+function scrollToTop() {
+  try {
+    if (document.activeElement && document.activeElement.blur && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
+  } catch (_) {}
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  } catch (_) {
+    window.scrollTo(0, 0);
+  }
+  if (document.documentElement) document.documentElement.scrollTop = 0;
+  if (document.body) document.body.scrollTop = 0;
+}
+
 function buildNav() {
   navGrid.innerHTML = "";
   if (!started) {
@@ -1222,6 +1237,7 @@ function renderWelcome() {
   quizArea.innerHTML = "";
   resultArea.classList.add("hidden");
   quizArea.classList.remove("hidden");
+  scrollToTop();
 
   const card = document.createElement("div");
   card.className = "card welcome-card";
@@ -1272,7 +1288,10 @@ function renderWelcome() {
   card.appendChild(btn);
 
   quizArea.appendChild(card);
-  setTimeout(() => input.focus(), 50);
+  setTimeout(() => {
+    scrollToTop();
+    try { input.focus({ preventScroll: true }); } catch (_) {}
+  }, 50);
 }
 
 function renderWarning() {
@@ -1281,6 +1300,7 @@ function renderWarning() {
   quizArea.innerHTML = "";
   resultArea.classList.add("hidden");
   quizArea.classList.remove("hidden");
+  scrollToTop();
 
   const card = document.createElement("div");
   card.className = "card warning-card";
@@ -1391,7 +1411,11 @@ function renderWarning() {
 
   card.appendChild(actions);
   quizArea.appendChild(card);
-  setTimeout(() => go.focus(), 50);
+  scrollToTop();
+  requestAnimationFrame(() => {
+    scrollToTop();
+    requestAnimationFrame(() => scrollToTop());
+  });
 }
 
 function render() {
@@ -1406,6 +1430,7 @@ function render() {
   const s = state[currentIdx];
 
   quizArea.innerHTML = "";
+  scrollToTop();
   const card = document.createElement("div");
   card.className = "card";
 
@@ -1593,6 +1618,7 @@ function showResults() {
   quizArea.classList.add("hidden");
   resultArea.classList.remove("hidden");
   resultArea.innerHTML = "";
+  scrollToTop();
 
   const card = document.createElement("div");
   card.className = "card result-card";
@@ -1834,6 +1860,9 @@ function deliverResults(statusEl) {
     });
 }
 
+if ("scrollRestoration" in history) {
+  try { history.scrollRestoration = "manual"; } catch (_) {}
+}
 render();
 
 (function () {
