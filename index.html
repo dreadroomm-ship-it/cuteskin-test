@@ -1309,79 +1309,15 @@ function renderWarning() {
   icon.className = "warning-head-icon";
   icon.textContent = "⚠";
   const headText = document.createElement("span");
-  headText.textContent = "Внимание — прочтите перед началом";
+  headText.textContent = "Внимание — прочтите перед началом!";
   head.appendChild(icon);
   head.appendChild(headText);
   card.appendChild(head);
 
   const lead = document.createElement("div");
   lead.className = "warning-lead";
-  lead.textContent = "В тесте стоит защита от любых способов задействовать поиск и нейросети для прохождения. Не нужно пытаться обмануть систему — тест нужно проходить самостоятельно.";
+  lead.textContent = "В тесте стоит защита от любых способов задействовать поисковые системы и нейросети для прохождения теста. Не пытайтесь обмануть систему — работодатель увидит, если вы пользуетесь дополнительными источниками для прохождения теста. Для нас важно понимать ваши реальные знания.";
   card.appendChild(lead);
-
-  const sub = document.createElement("div");
-  sub.className = "warning-sub";
-  sub.textContent = "Что отслеживается";
-  card.appendChild(sub);
-
-  const list = document.createElement("ul");
-  list.className = "warning-list";
-  const items = [
-    "<b>Секундомер на каждый вопрос</b> и общая длительность теста.",
-    "<b>Попытки вставки и копирования</b> фиксируются по каждому вопросу.",
-    "<b>Попытки скриншота</b> — PrintScreen, Ctrl/Alt+PrtSc, Win+Shift+S, Cmd+Shift+3/4/5/6, плюс косвенные признаки (краткая потеря фокуса).",
-  ];
-  items.forEach((html) => {
-    const li = document.createElement("li");
-    li.innerHTML = html;
-    list.appendChild(li);
-  });
-  card.appendChild(list);
-
-  const sub2 = document.createElement("div");
-  sub2.className = "warning-sub";
-  sub2.textContent = "Что увидит работодатель";
-  card.appendChild(sub2);
-
-  const list2 = document.createElement("ul");
-  list2.className = "warning-list";
-  const items2 = [
-    "Под каждым вопросом — <b>время ответа</b> и флажки: «быстрый ответ», «вставка×N», «копирование×N».",
-    "Подозрительные ответы <b>подсвечены красным</b>.",
-    "В шапке письма — общее число попыток скриншота.",
-  ];
-  items2.forEach((html) => {
-    const li = document.createElement("li");
-    li.innerHTML = html;
-    list2.appendChild(li);
-  });
-  card.appendChild(list2);
-
-  const previewLabel = document.createElement("div");
-  previewLabel.className = "warning-preview-label";
-  previewLabel.textContent = "Пример — что увидит работодатель";
-  card.appendChild(previewLabel);
-
-  const preview = document.createElement("div");
-  preview.className = "warning-preview";
-  preview.innerHTML = `
-    <div class="wp-hero">
-      <div class="wp-eyebrow">CUTESKIN · PROJECT MANAGER TEST</div>
-      <div class="wp-title">Отчёт о прохождении</div>
-      <div class="wp-date">21.04.2026 · 10:40</div>
-      <div class="wp-chips">
-        <span class="wp-chip">⏱ 28с</span>
-        <span class="wp-chip wp-chip-warn">⚠ Скриншотов: 5</span>
-      </div>
-    </div>
-    <div class="wp-alert">⚠ Кандидат пытался сделать скриншот 5 раз во время прохождения теста</div>
-  `;
-  card.appendChild(preview);
-
-  const note = document.createElement("div");
-  note.className = "warning-note";
-  note.textContent = "Нажимая «Я готов(а), приступаю», вы подтверждаете, что проходите тест самостоятельно.";
-  card.appendChild(note);
 
   const actions = document.createElement("div");
   actions.className = "warning-actions";
