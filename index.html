@@ -1731,69 +1731,190 @@ function buildPayload(correct, total, pct, sections) {
   };
 }
 
+// ============================================================
+//  Доставка результатов
+//  Стратегия: гарантированная доставка с тройной страховкой.
+//   1) Сразу сохраняем payload в localStorage (выживает при крэше/закрытии)
+//   2) Ретраи: 4 попытки с экспоненциальным backoff (1.5с, 4с, 9с, 18с)
+//   3) keepalive в fetch — выживает при закрытии вкладки
+//   4) sendBeacon на pagehide/beforeunload как последняя страховка
+//   5) При следующей загрузке страницы — автоматически досылаем
+//      все «застрявшие» payload'ы из localStorage
+// ============================================================
+const PENDING_KEY = "cuteskin_pending_v1";
+const RETRY_DELAYS_MS = [1500, 4000, 9000, 18000];
+const SEND_TIMEOUT_MS = 28000;
+
+function loadPending() {
+  try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); }
+  catch (_) { return []; }
+}
+function savePending(arr) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify(arr)); } catch (_) {}
+}
+function addPending(payload) {
+  const id = (payload.name || "x") + "|" + (payload.date || "") + "|" + (payload.score || "");
+  const arr = loadPending().filter(it => it.id !== id);
+  arr.push({ id, payload, savedAt: Date.now(), attempts: 0 });
+  savePending(arr);
+  return id;
+}
+function removePending(id) {
+  savePending(loadPending().filter(it => it.id !== id));
+}
+
+function postPayloadOnce(payload, opts) {
+  opts = opts || {};
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), opts.timeout || SEND_TIMEOUT_MS) : null;
+  return fetch(EMAIL_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload),
+    redirect: "follow",
+    mode: "cors",
+    keepalive: true,
+    signal: ctrl ? ctrl.signal : undefined
+  }).then((r) => {
+    if (timer) clearTimeout(timer);
+    return r.text().then((t) => {
+      let parsed = null;
+      try { parsed = JSON.parse(t); } catch (_) {}
+      const ok = r.ok && parsed && parsed.ok;
+      return { ok, status: r.status, text: t, parsed };
+    });
+  }).catch((err) => {
+    if (timer) clearTimeout(timer);
+    throw err;
+  });
+}
+
+function postWithRetry(payload, onAttempt) {
+  let attempt = 0;
+  const tryOnce = () => {
+    attempt++;
+    if (onAttempt) onAttempt(attempt, RETRY_DELAYS_MS.length);
+    return postPayloadOnce(payload).then((res) => {
+      if (res.ok) return res;
+      // Сервер ответил, но не ok — это уже не сетевая, а серверная.
+      // Ретраим тоже (например, временный сбой Apps Script).
+      if (attempt - 1 < RETRY_DELAYS_MS.length) {
+        return new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt - 1])).then(tryOnce);
+      }
+      throw new Error("server_not_ok: " + res.status + " " + (res.text || "").slice(0, 120));
+    }).catch((err) => {
+      if (err && err.message && err.message.indexOf("server_not_ok") === 0) throw err;
+      // Сетевая ошибка / abort
+      if (attempt - 1 < RETRY_DELAYS_MS.length) {
+        return new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt - 1])).then(tryOnce);
+      }
+      throw err;
+    });
+  };
+  return tryOnce();
+}
+
 function deliverResults(statusEl) {
   if (!EMAIL_WEBHOOK_URL) {
     statusEl.className = "send-status skipped";
     statusEl.textContent = "⚙ Отправка на e-mail ещё не настроена";
     return;
   }
+  if (!lastPayload) {
+    statusEl.className = "send-status error";
+    statusEl.textContent = "⚠ Нет данных для отправки";
+    return;
+  }
+
+  // Страховка №1: сразу в localStorage
+  const pendingId = addPending(lastPayload);
+
   statusEl.className = "send-status sending";
   statusEl.textContent = "Отправка результатов на e-mail…";
 
   const showError = (msg, detail) => {
     if (detail) console.error("[deliverResults]", detail);
     statusEl.className = "send-status error";
-    statusEl.textContent = "⚠ " + msg + " ";
+    statusEl.textContent = "⚠ " + msg + " — данные сохранены, отправим автоматически. ";
     const retry = document.createElement("button");
     retry.className = "send-retry";
     retry.type = "button";
-    retry.textContent = "Повторить";
+    retry.textContent = "Повторить сейчас";
     retry.onclick = () => deliverResults(statusEl);
     statusEl.appendChild(retry);
   };
 
-  const sendOnce = (attempt) => {
-    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), 25000) : null;
-    return fetch(EMAIL_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(lastPayload),
-      redirect: "follow",
-      mode: "cors",
-      signal: ctrl ? ctrl.signal : undefined
-    }).then((r) => {
-      if (timer) clearTimeout(timer);
-      return r.text().then((t) => ({ ok: r.ok, status: r.status, text: t }));
-    }).catch((err) => {
-      if (timer) clearTimeout(timer);
-      if (attempt < 1) {
-        return new Promise((res) => setTimeout(res, 1200)).then(() => sendOnce(attempt + 1));
-      }
-      throw err;
-    });
-  };
-
-  sendOnce(0)
-    .then(({ ok, status, text }) => {
-      let parsed = null;
-      try { parsed = JSON.parse(text); } catch (e) {}
-      if (ok && parsed && parsed.ok) {
-        statusEl.className = "send-status success";
-        statusEl.textContent = "✓ Результаты отправлены работодателю";
-      } else {
-        showError("Сервер вернул ошибку (" + status + ")", { status, text: (text || "").slice(0, 200) });
-      }
+  postWithRetry(lastPayload, (n, total) => {
+    statusEl.textContent = "Отправка результатов на e-mail… (попытка " + n + "/" + total + ")";
+  })
+    .then(() => {
+      removePending(pendingId);
+      statusEl.className = "send-status success";
+      statusEl.textContent = "✓ Результаты отправлены работодателю";
     })
     .catch((err) => {
       const name = (err && err.name) || "";
       const msg = (err && err.message) || "";
       let label = "Не удалось отправить результаты";
       if (name === "AbortError") label = "Сервер долго не отвечал";
-      else if (/fetch|network/i.test(msg)) label = "Нет связи с сервером";
+      else if (/fetch|network|failed/i.test(msg)) label = "Нет связи с сервером";
+      else if (msg.indexOf("server_not_ok") === 0) label = "Сервер вернул ошибку";
       showError(label, { name, message: msg });
+      // Запускаем фоновый авто-ресенд в любом случае
+      schedulePendingFlush(8000);
     });
 }
+
+// ===== Фоновая досылка застрявших payload'ов =====
+let pendingFlushTimer = null;
+function schedulePendingFlush(delay) {
+  if (pendingFlushTimer) clearTimeout(pendingFlushTimer);
+  pendingFlushTimer = setTimeout(flushPending, delay || 0);
+}
+
+function flushPending() {
+  pendingFlushTimer = null;
+  if (!EMAIL_WEBHOOK_URL) return;
+  const pending = loadPending();
+  if (!pending.length) return;
+  // Берём первый застрявший — последовательно, чтобы не флудить webhook
+  const item = pending[0];
+  item.attempts = (item.attempts || 0) + 1;
+  savePending(pending);
+  postPayloadOnce(item.payload).then((res) => {
+    if (res.ok) {
+      removePending(item.id);
+      schedulePendingFlush(500); // следующий, если есть
+    } else {
+      // повторим попозже
+      schedulePendingFlush(Math.min(60000, 5000 * item.attempts));
+    }
+  }).catch(() => {
+    schedulePendingFlush(Math.min(60000, 5000 * item.attempts));
+  });
+}
+
+// При загрузке страницы — попробовать досослать всё что застряло
+window.addEventListener("load", () => schedulePendingFlush(2000));
+// При возврате видимости — тоже
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") schedulePendingFlush(1500);
+});
+// Последняя страховка при закрытии вкладки
+function beaconPending() {
+  if (!EMAIL_WEBHOOK_URL) return;
+  const pending = loadPending();
+  if (!pending.length) return;
+  if (typeof navigator === "undefined" || !navigator.sendBeacon) return;
+  for (const item of pending) {
+    try {
+      const blob = new Blob([JSON.stringify(item.payload)], { type: "text/plain;charset=utf-8" });
+      navigator.sendBeacon(EMAIL_WEBHOOK_URL, blob);
+    } catch (_) {}
+  }
+}
+window.addEventListener("pagehide", beaconPending);
+window.addEventListener("beforeunload", beaconPending);
 
 if ("scrollRestoration" in history) {
   try { history.scrollRestoration = "manual"; } catch (_) {}

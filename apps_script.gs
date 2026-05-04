@@ -5,9 +5,19 @@
 //
 //  После правки: Deploy → Manage deployments → Edit →
 //  Version: "New version" → Deploy. Иначе /exec вернёт старую версию.
+//
+//  ОБЯЗАТЕЛЬНЫЕ Script Properties (Project Settings → Script Properties):
+//    BACKUP_SHEET_ID    — ID таблицы-бэкапа (без него код упадёт на старте)
+//    TELEGRAM_BOT_TOKEN — опционально, для алертов при сбое почты
+//    TELEGRAM_CHAT_ID   — опционально, куда слать алерт
 // ============================================================
 
 const RECIPIENT = 'dreadroomm@gmail.com';
+const DEDUPE_WINDOW_SEC = 90;
+const SHEET_HEADERS = [
+  'timestamp', 'name', 'score', 'percent', 'duration_sec',
+  'screenshot_attempts', 'email_status', 'fingerprint', 'raw_payload_json'
+];
 
 const BRAND = {
   pink:        '#d9466f',
@@ -35,19 +45,59 @@ function doGet() {
 }
 
 function doPost(e) {
+  let data = null;
+  let fingerprint = '';
   try {
-    const data = JSON.parse(e.postData.contents);
-    const pdf = buildPdf(data);
-    const html = buildHtmlEmail(data);
-    const subject = formatSubject(data);
-    GmailApp.sendEmail(RECIPIENT, subject, plainFallback(data), {
-      htmlBody: html,
-      attachments: [pdf],
-      name: 'CuteSkin Test'
-    });
-    return out({ ok: true });
+    data = JSON.parse(e.postData.contents);
+    data = normalize(data);
+    fingerprint = makeFingerprint(data);
+
+    // 1) Дедуп: если за последние 90 сек уже принимали тот же payload — отвечаем ok без работы
+    if (isDuplicate(fingerprint)) {
+      return out({ ok: true, deduped: true });
+    }
+
+    // 2) Бэкап в Sheet ВСЕГДА (до отправки почты — чтобы данные не потерять, даже если Gmail упадёт)
+    const rowIdx = appendBackupRow(data, fingerprint, 'pending');
+
+    // 3) Пробуем сформировать и отправить письмо
+    let emailStatus = 'sent';
+    let emailError = '';
+    try {
+      const pdf = buildPdf(data);
+      const html = buildHtmlEmail(data);
+      const subject = formatSubject(data);
+      GmailApp.sendEmail(RECIPIENT, subject, plainFallback(data), {
+        htmlBody: html,
+        attachments: [pdf],
+        name: 'CuteSkin Test'
+      });
+    } catch (mailErr) {
+      emailStatus = 'failed';
+      emailError = String(mailErr && mailErr.stack || mailErr);
+      // Шлём Telegram-алерт что письмо не ушло (если бот настроен)
+      notifyTelegram(
+        '⚠ CuteSkin Test: письмо НЕ ушло\n' +
+        'Кандидат: ' + (data.name || '—') + '\n' +
+        'Результат: ' + (data.score || '—') + ' (' + (data.percent || 0) + '%)\n' +
+        'Ошибка: ' + emailError.slice(0, 400) + '\n' +
+        'Данные сохранены в Sheet, строка ' + rowIdx
+      );
+    }
+
+    // 4) Обновляем статус в Sheet
+    updateBackupStatus(rowIdx, emailStatus + (emailError ? ': ' + emailError.slice(0, 200) : ''));
+
+    return out({ ok: true, email: emailStatus, row: rowIdx });
+
   } catch (err) {
-    return out({ ok: false, error: String(err && err.stack || err) });
+    // Полный фейл — даже Sheet не записался. Пытаемся хотя бы Telegram + grand-fallback запись.
+    const errStr = String(err && err.stack || err);
+    notifyTelegram('🆘 CuteSkin Test: критический сбой обработчика\n' + errStr.slice(0, 600));
+    try {
+      appendBackupRow(data || { name: 'PARSE_ERROR' }, fingerprint || '', 'handler_error: ' + errStr.slice(0, 200));
+    } catch (_) {}
+    return out({ ok: false, error: errStr });
   }
 }
 
@@ -55,6 +105,97 @@ function out(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ------------ Backup / Dedup / Telegram ------------
+
+function getProp_(name) {
+  return PropertiesService.getScriptProperties().getProperty(name);
+}
+
+function getSheet_() {
+  const id = getProp_('BACKUP_SHEET_ID');
+  if (!id) throw new Error('Missing Script Property: BACKUP_SHEET_ID');
+  const ss = SpreadsheetApp.openById(id);
+  let sheet = ss.getSheetByName('responses');
+  if (!sheet) {
+    sheet = ss.insertSheet('responses');
+    sheet.appendRow(SHEET_HEADERS);
+    sheet.setFrozenRows(1);
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(SHEET_HEADERS);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function appendBackupRow(data, fingerprint, status) {
+  const sheet = getSheet_();
+  const row = [
+    new Date(),
+    data.name || '',
+    data.score || '',
+    data.percent != null ? data.percent : '',
+    data.duration_sec != null ? data.duration_sec : '',
+    data.screenshot_attempts != null ? data.screenshot_attempts : '',
+    status,
+    fingerprint,
+    JSON.stringify(data).slice(0, 49000) // запас от лимита ячейки 50K
+  ];
+  sheet.appendRow(row);
+  return sheet.getLastRow();
+}
+
+function updateBackupStatus(rowIdx, status) {
+  try {
+    const sheet = getSheet_();
+    const colIdx = SHEET_HEADERS.indexOf('email_status') + 1;
+    sheet.getRange(rowIdx, colIdx).setValue(status);
+  } catch (_) {}
+}
+
+function makeFingerprint(data) {
+  // name + date + score — для дедупа повторных POST из ретраев фронта
+  const raw = (data.name || '') + '|' + (data.date || '') + '|' + (data.score || '') + '|' + (data.percent || '');
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw)
+    .map(b => ((b < 0 ? b + 256 : b)).toString(16).padStart(2, '0')).join('');
+}
+
+function isDuplicate(fingerprint) {
+  if (!fingerprint) return false;
+  const cache = CacheService.getScriptCache();
+  const key = 'fp_' + fingerprint;
+  if (cache.get(key)) return true;
+  cache.put(key, '1', DEDUPE_WINDOW_SEC);
+  return false;
+}
+
+function notifyTelegram(text) {
+  try {
+    const token = getProp_('TELEGRAM_BOT_TOKEN');
+    const chatId = getProp_('TELEGRAM_CHAT_ID');
+    if (!token || !chatId) return;
+    UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'post',
+      payload: { chat_id: chatId, text: text },
+      muteHttpExceptions: true
+    });
+  } catch (_) {}
+}
+
+function normalize(d) {
+  d = d || {};
+  d.name = String(d.name || '').slice(0, 200);
+  d.date = d.date || new Date().toISOString();
+  d.score = String(d.score || '0/0');
+  d.correct = Number(d.correct) || 0;
+  d.total = Number(d.total) || 0;
+  d.percent = Number(d.percent) || 0;
+  d.duration_sec = Number(d.duration_sec) || 0;
+  d.screenshot_attempts = Number(d.screenshot_attempts) || 0;
+  d.sections = Array.isArray(d.sections) ? d.sections : [];
+  d.answers = Array.isArray(d.answers) ? d.answers : [];
+  return d;
 }
 
 // ------------ Helpers ------------
