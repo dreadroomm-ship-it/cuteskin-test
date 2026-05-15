@@ -201,7 +201,7 @@ function normalize(d) {
 // ------------ Helpers ------------
 
 function formatSubject(d) {
-  const name = (d.name || 'Без имени').trim();
+  const name = String(d.name || 'Без имени').replace(/[\r\n]/g, ' ').trim().slice(0, 100);
   return 'CuteSkin Test — ' + name + ' — ' + d.score + ' (' + d.percent + '%)';
 }
 
@@ -523,10 +523,21 @@ function buildPdf(data) {
 
   // Save and convert
   doc.saveAndClose();
-  const file = DriveApp.getFileById(doc.getId());
+  const docId = doc.getId();
+  const file = DriveApp.getFileById(docId);
   const pdf = file.getAs('application/pdf').copyBlob();
   pdf.setName('CuteSkin-Test-' + safeName + '.pdf');
-  file.setTrashed(true);
+  // Permanent delete temp Doc (требует Advanced Drive Service "Drive" в редакторе).
+  // Fallback: Trash — Google вычищает через 30 дней.
+  try {
+    if (typeof Drive !== 'undefined' && Drive.Files && Drive.Files.remove) {
+      Drive.Files.remove(docId);
+    } else {
+      file.setTrashed(true);
+    }
+  } catch (e) {
+    try { file.setTrashed(true); } catch (_) {}
+  }
   return pdf;
 }
 
